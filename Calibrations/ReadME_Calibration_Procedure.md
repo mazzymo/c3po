@@ -11,7 +11,7 @@ This markdown file describes the methods and materials needed to preform a calib
    where these standards are +- 5 at 25 degrees C
 
 # Procedure 
-1. Powered on the C3PO and changed the sampling rate to every 20 seconds
+1. Powered on the C3PO and changed the sampling rate to every 20 seconds. Record the exact time the C3PO was powered on. 
 2. Gathered the 3 beakers and emptied the 2 standards into 2 of the glass beakers, ensuring to label each one. The last \
    beaker was filled with an approximately equal amount of milli-Q water for 0 uS/cm.
 3. Placed the C3PO in each beaker for 5 minutes each (to have at least a total of 10 measurements per standard), rinsing \
