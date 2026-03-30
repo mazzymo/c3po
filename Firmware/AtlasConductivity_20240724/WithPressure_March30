@@ -1,0 +1,166 @@
+#include "Particle.h"
+#include "SdFat.h"
+#include <Ezo_i2c.h> 
+#include <Wire.h>    
+#include <sequencer2.h> 
+#include <Ezo_i2c_util.h> 
+
+// --- 1. SENSOR OBJECTS & PINS ---
+Ezo_board RTD = Ezo_board(102, "RTD"); // Default Address 102
+Ezo_board EC = Ezo_board(100, "EC");   // Default Address 100
+
+const int pressurePin = A0; // Connect A-10 White wire to this pin (via resistor divider)
+double pressure_psi;
+
+// --- 2. SEQUENCER & SYSTEM SETTINGS ---
+void step1(); 
+void step2();
+int secondsUntilNextEvent();
+
+Sequencer2 Seq(&step1, 1000, &step2, 0);
+
+SYSTEM_MODE(MANUAL);
+SYSTEM_THREAD(ENABLED);
+
+// --- 3. STORAGE & TIMING ---
+const int SD_CHIP_SELECT = D5;
+SdFat sd;
+File myFile;
+
+const unsigned long MAX_TIME_TO_PUBLISH_MS = 20000; 
+const unsigned long SECONDS_BETWEEN_MEASUREMENTS = 360; 
+
+enum State { DATALOG_STATE, PUBLISH_STATE, SLEEP_STATE };
+State state = DATALOG_STATE;
+
+#define PUBLISHING 1
+
+unsigned long stateTime = 0;
+long real_time;
+double temp; 
+double cond; 
+char data[140]; // Buffer for SD/Cellular strings
+int errorcode; 
+
+SerialLogHandler logHandler;
+SystemSleepConfiguration config;
+const char *eventName = "cond";
+FuelGauge batteryMonitor;
+
+void setup() {
+  if (PUBLISHING == 1) {
+    Particle.connect();
+  } else {
+    Cellular.off(); 
+  }
+  delay(3000);
+  Wire.begin();                           
+  Serial.begin(9600);                     
+  Seq.reset();                            
+
+  // Initialize SD Card
+  if (!sd.begin(SD_CHIP_SELECT)) {
+    Serial.println("SD Card initialization failed!");
+  }
+  
+  // Write Header to CSV if file is new
+  if (myFile.open("conductivity.csv", O_RDWR | O_CREAT | O_AT_END)) {
+    myFile.println("Real_Time,Temp_C,Cond_uScm-1,Pressure_PSI,CellVoltage,StateofCharge,ErrorCode"); 
+    myFile.close(); 
+  }
+}
+
+void loop() {
+  switch (state) {
+    case DATALOG_STATE: {
+      delay(1000);
+      step1(); // Start I2C readings
+      delay(1000); 
+      step2(); // Retrieve I2C readings
+      delay(300);
+      
+      temp = RTD.get_last_received_reading(); 
+      cond = EC.get_last_received_reading(); 
+    
+      // --- A-10 PRESSURE LOGIC WITH VOLTAGE DIVIDER COMPENSATION ---
+      int rawValue = analogRead(pressurePin);
+      
+      // A) Convert raw ADC (12-bit, 4095) to the voltage the pin actually sees (max 3.3V)
+      float measuredVoltage = rawValue * (3.3 / 4095.0); 
+      
+      // B) Multiply by 1.5 to compensate for the 10k/20k resistor divider (2/3 scale)
+      float actualSensorVoltage = measuredVoltage * 1.5; 
+      
+      // C) Apply Atlas A-10 Formula: PSI = (2.5 * Voltage) - 1.25
+      pressure_psi = (2.5 * actualSensorVoltage) - 1.25;
+      if (pressure_psi < 0) pressure_psi = 0.0;
+
+      // --- LOGGING ---
+      real_time = Time.now(); 
+      float cellVoltage = batteryMonitor.getVCell();
+      float stateOfCharge = batteryMonitor.getSoC();
+      errorcode = 0; 
+
+      if (!sd.begin(SD_CHIP_SELECT, SPI_FULL_SPEED)) {
+        errorcode = 1; 
+      }
+      
+      // Construct the data string
+      snprintf(data, sizeof(data), "%li,%.2f,%.2f,%.2f,%.2f,%.2f,%i", 
+               real_time, temp, cond, pressure_psi, cellVoltage, stateOfCharge, errorcode);
+      
+      if (myFile.open("conductivity.csv", O_RDWR | O_CREAT | O_AT_END)) {
+        Serial.println(data);
+        myFile.println(data);
+        myFile.close();
+      } else {
+        errorcode = 2;
+        Serial.println("SD Write Error");
+      }
+
+      state = (PUBLISHING == 1) ? PUBLISH_STATE : SLEEP_STATE;
+    }
+    break;
+
+    case PUBLISH_STATE: {
+      stateTime = millis();
+      while (millis() - stateTime < MAX_TIME_TO_PUBLISH_MS) {
+        if (Particle.connected()) {
+          bool success = Particle.publish(eventName, data, 60, PRIVATE, WITH_ACK);
+          Serial.printlnf("Publish successful: %d", success);
+          break;
+        }
+        delay(500);
+      }
+      state = SLEEP_STATE; 
+    }
+    break;
+    
+    case SLEEP_STATE: {
+      Serial.println("Entering sleep...");
+      int wakeInSeconds = secondsUntilNextEvent();
+      config.mode(SystemSleepMode::ULTRA_LOW_POWER)
+            .duration(wakeInSeconds * 1000L)
+            .network(NETWORK_INTERFACE_CELLULAR, SystemSleepNetworkFlag::INACTIVE_STANDBY);
+      System.sleep(config);
+      state = DATALOG_STATE;
+    }
+    break;
+  }                             
+}
+
+// Helper functions for the sequencer
+void step1(){
+  RTD.send_read_cmd();                      
+  EC.send_read_cmd();
+}
+
+void step2(){
+  receive_and_print_reading(RTD);             
+  receive_and_print_reading(EC);             
+}
+
+int secondsUntilNextEvent() {
+  int current_seconds = Time.now();
+  return SECONDS_BETWEEN_MEASUREMENTS - (current_seconds % SECONDS_BETWEEN_MEASUREMENTS);
+}
