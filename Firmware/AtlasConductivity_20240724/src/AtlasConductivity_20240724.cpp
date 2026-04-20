@@ -38,7 +38,7 @@ enum State {
 State state = DATALOG_STATE;
 
 // Define whether to publish, 1, or not, 0 
-#define PUBLISHING 1
+#define PUBLISHING 0
 
 //Other definitions
 unsigned long stateTime = 0;
