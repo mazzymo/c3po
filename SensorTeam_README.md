@@ -1,5 +1,5 @@
 The updates proposed by the C3PO sensor team were to reduce size of Conductivity and Temperature probes being used in the C3PO sensor and future suggestions for 
-adding a pressure probe. The updates include code change 1 to a 0 in code for publishing, new wiring diagram, images of updated probes connected and being tested, and 
+adding a pressure probe. The updates include code change 1 to a 0 in code for publishing, new wiring diagram, images of updated probes data sheets, probes connected to board, probes being tested, and 
 an example of what the pressure sensor added to the C3PO may look like. 
 
 Updated Wiring diagram can be found in the:
@@ -15,3 +15,4 @@ Photos Folder → SensorTeam_TempSensor_Atlas
 
 We also included an image of the future pressure sensor to add to the C3PO:
 Photos Folder → FuturePressureSensor_Image
+
