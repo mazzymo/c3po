@@ -1,0 +1,3 @@
+The updates proposed by the C3PO sensor team were to reduce size of Conductivity and Temperature probes being used in the C3PO sensor and future suggestions for 
+adding a pressure sensor. The updates include code change 1 to a 0 in code for publishing, new wiring diagram, images of udated probes connected and being tested, and 
+an example of what the pressure sensor added to the C3PO may look like. 
